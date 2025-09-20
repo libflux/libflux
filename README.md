@@ -99,6 +99,16 @@ Known limitations:
 
 ---
 
+## Benchmarks
+
+Container creation and startup times (on modern hardware):
+
+- **Container Creation**: ~307µs
+- **Container Start**: ~50ms
+- **Total Container Creation & Start**: ~50ms
+
+---
+
 ## License
 
 MIT License. See [LICENSE](LICENSE).

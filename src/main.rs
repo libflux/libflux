@@ -67,7 +67,7 @@ struct RunArgs {
     /// Container name
     name: String,
 
-    /// Container image or rootfs path
+    /// Container image (directory or archive: .tar, .tar.gz, .tgz)
     #[arg(short, long)]
     image: String,
 
@@ -405,8 +405,15 @@ async fn handle_run(args: RunArgs) -> LibfluxResult<()> {
     // Validate root directory protection
     validate_root_directory(&args.image, args.ignore_root_warning)?;
 
-    // Validate container structure
-    validate_container_structure(&args.image)?;
+    // Validate container structure (skip for archives)
+    let image_path = PathBuf::from(&args.image);
+    let is_archive = args.image.ends_with(".tar")
+        || args.image.ends_with(".tar.gz")
+        || args.image.ends_with(".tgz")
+        || args.image.ends_with(".tar.xz");
+    if !is_archive {
+        validate_container_structure(&args.image)?;
+    }
 
     // Parse environment variables
     let mut environment = HashMap::new();
@@ -425,9 +432,7 @@ async fn handle_run(args: RunArgs) -> LibfluxResult<()> {
     let mut mounts = Vec::new();
     for bind_mount in args.bind {
         if let Some((host_path, container_path)) = bind_mount.split_once(':') {
-            // Validate bind mount safety
             validate_bind_mount_safety(host_path, args.ignore_root_warning)?;
-
             let mount = MountType::Bind {
                 source: PathBuf::from(host_path),
                 target: PathBuf::from(container_path),
@@ -473,7 +478,6 @@ async fn handle_run(args: RunArgs) -> LibfluxResult<()> {
         NamespaceType::Ipc,
         NamespaceType::Uts,
     ];
-
     if network_mode != NetworkMode::Host {
         default_namespaces.push(NamespaceType::Network);
     }
@@ -484,7 +488,7 @@ async fn handle_run(args: RunArgs) -> LibfluxResult<()> {
         args.command
     };
 
-    // Create temporary rootfs by copying the image to a temp directory
+    // Create temporary rootfs by copying or extracting the image to a temp directory
     debug!("Creating temporary directory...");
     let temp_dir = tempfile::tempdir().map_err(|e| {
         error!("Failed to create temporary directory: {}", e);
@@ -495,23 +499,90 @@ async fn handle_run(args: RunArgs) -> LibfluxResult<()> {
     let temp_rootfs = temp_dir.path().join("rootfs");
 
     println!("Creating temporary container from '{}'...", args.image);
-    debug!("Source directory: {}", args.image);
-    debug!("Destination directory: {}", temp_rootfs.display());
-    debug!("Temp directory: {}", temp_dir.path().display());
+    debug!("Source: {}", args.image);
+    debug!("Destination: {}", temp_rootfs.display());
+    debug!("Temp dir: {}", temp_dir.path().display());
 
-    // Verify source exists before copying
-    let src_path = PathBuf::from(&args.image);
-    debug!("Checking if source path exists: {}", src_path.display());
-    if !src_path.exists() {
+    // Verify source exists before copying or extracting
+    if !image_path.exists() {
         return Err(LibfluxError::InvalidArgument(format!(
-            "Source image directory does not exist: {}",
-            src_path.display()
+            "Source image does not exist: {}",
+            image_path.display()
         )));
     }
-    debug!("Source path exists, starting copy...");
 
-    copy_directory(&src_path, &temp_rootfs)?;
-    debug!("Copy completed successfully");
+    if is_archive {
+        // Extract archive to temp_rootfs
+        debug!("Extracting archive to rootfs...");
+        std::fs::create_dir_all(&temp_rootfs).map_err(|e| LibfluxError::Io(e))?;
+        let status = if args.image.ends_with(".tar.gz") || args.image.ends_with(".tgz") {
+            std::process::Command::new("tar")
+                .arg("-xzf")
+                .arg(&args.image)
+                .arg("-C")
+                .arg(&temp_rootfs)
+                .status()
+        } else if args.image.ends_with(".tar.xz") {
+            std::process::Command::new("tar")
+                .arg("-xJf")
+                .arg(&args.image)
+                .arg("-C")
+                .arg(&temp_rootfs)
+                .status()
+        } else {
+            std::process::Command::new("tar")
+                .arg("-xf")
+                .arg(&args.image)
+                .arg("-C")
+                .arg(&temp_rootfs)
+                .status()
+        };
+        match status {
+            Ok(s) if s.success() => debug!("Archive extracted successfully"),
+            Ok(s) => {
+                return Err(LibfluxError::InvalidArgument(format!(
+                    "Failed to extract archive (exit code {}): {}",
+                    s.code().unwrap_or(-1),
+                    args.image
+                )));
+            }
+            Err(e) => {
+                return Err(LibfluxError::Io(e));
+            }
+        }
+        // Validate extracted rootfs structure
+        let required_dirs = ["bin", "etc", "lib", "usr", "tmp", "dev", "proc", "sys"];
+        let mut missing_dirs = Vec::new();
+        for dir in &required_dirs {
+            let dir_path = temp_rootfs.join(dir);
+            if !dir_path.exists() {
+                missing_dirs.push(*dir);
+            }
+        }
+        if !missing_dirs.is_empty() {
+            println!(
+                "Warning: Missing typical root filesystem directories in extracted archive: {}",
+                missing_dirs.join(", ")
+            );
+        }
+        // Check for shell
+        let shells = ["bin/sh", "bin/bash"];
+        let mut has_shell = false;
+        for shell in &shells {
+            let shell_path = temp_rootfs.join(shell);
+            if shell_path.exists() {
+                has_shell = true;
+                break;
+            }
+        }
+        if !has_shell {
+            println!("Warning: No shell found in extracted archive (bin/sh, bin/bash)");
+        }
+    } else {
+        debug!("Copying image directory to rootfs...");
+        copy_directory(&image_path, &temp_rootfs)?;
+        debug!("Copy completed successfully");
+    }
 
     // Build NetworkConfig from CLI flags
     let network_mode = if args.no_network || args.network == "none" {
