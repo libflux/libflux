@@ -15,12 +15,10 @@ A secure, performant, and developer-friendly container runtime built with Rust, 
 
 ### CLI Features
 
-- **Container Lifecycle**: Create, start, stop, pause, resume, and remove containers
+- **Container Lifecycle**: Run containers temporarily; containers are deleted on exit.
 - **Real-time Configuration**: All configuration via CLI arguments, no config files needed
-- **Container Listing**: List running and stopped containers with state information
+- **Container Listing**: List running containers with state information
 - **Performance Benchmarking**: Built-in benchmark system for performance analysis
-- **Monitoring**: Resource statistics and real-time container monitoring
-- **Exec Support**: Execute commands inside running containers (planned)
 - **Image Support**: Basic rootfs archive extraction (planned)
 
 ## 📋 Prerequisites
@@ -77,12 +75,12 @@ libflux info
 
 ```bash
 # Run a simple command in an isolated environment
-sudo libflux run hello-world \
+sudo libflux run container-name \
   --image /path/to/rootfs \
   -- /bin/echo "Hello from libflux!"
 
 # Run interactively
-sudo libflux run interactive \
+sudo libflux run container-name \
   --image /path/to/rootfs \
   -- /bin/bash
 ```
@@ -91,13 +89,10 @@ sudo libflux run interactive \
 
 ```bash
 # List running containers
-libflux list
-
-# List all containers (including stopped)
-libflux list --all
+libflux ps
 
 # Output in JSON format
-libflux list --format json
+libflux ps --format json
 ```
 
 ## 📖 Usage Examples
@@ -105,27 +100,12 @@ libflux list --format json
 ### Basic Container Operations
 
 ```bash
-# Create a container (without starting)
-sudo libflux create web-server \
+# Create and run a container
+sudo libflux run web-server \
   --image /opt/alpine-rootfs \
   --memory 512M \
   --bind /var/www:/var/www \
   -- /usr/sbin/httpd
-
-# Start the container
-sudo libflux start web-server
-
-# Check container status
-libflux list
-
-# View container logs
-libflux logs web-server --follow
-
-# Stop the container
-sudo libflux stop web-server
-
-# Remove the container
-sudo libflux remove web-server
 ```
 
 ### Resource Limits
@@ -183,14 +163,6 @@ sudo libflux benchmark \
   --verbose
 ```
 
-## 📁 Container Management
-
-libflux uses a CLI-only approach for container configuration, providing all parameters through command-line arguments for maximum flexibility and transparency.
-
-### Environment Variables
-
-- `LIBFLUX_RUNTIME_DIR`: Override default runtime directory for container state
-
 ## 🏗 Architecture
 
 ```text
@@ -198,8 +170,6 @@ libflux uses a CLI-only approach for container configuration, providing all para
 │         CLI (libflux)       │
 ├─────────────────────────────┤
 │     Container Manager       │ ← Main entrypoint, manages lifecycle
-├─────────────────────────────┤
-│   Container Registry        │ ← State persistence, container tracking
 ├─────────────────────────────┤
 │  Namespace & Cgroup APIs    │ ← Syscall wrappers, resource limits
 ├─────────────────────────────┤
@@ -214,7 +184,6 @@ libflux uses a CLI-only approach for container configuration, providing all para
 ### Key Components
 
 - **Container Manager**: Orchestrates container lifecycle and coordinates other components
-- **Container Registry**: Manages container state persistence and discovery
 - **Namespace Manager**: Handles Linux namespace creation and management
 - **Filesystem Manager**: Manages mounts, overlays, and rootfs operations
 - **Cgroup Manager**: Controls resource limits using cgroups v2
@@ -247,7 +216,6 @@ libflux/
 ├── src/
 │   ├── main.rs         # CLI entrypoint
 │   ├── container.rs    # Container struct & lifecycle
-│   ├── registry.rs     # Container state persistence
 │   ├── namespace.rs    # Namespace management
 │   ├── cgroups.rs      # Cgroup management
 │   ├── fs.rs           # Filesystem operations
@@ -296,14 +264,13 @@ sudo ./target/debug/libflux run test \
   --image /tmp/test-rootfs \
   -- /bin/echo "Hello, libflux!"
 
-# Test container listing
-./target/debug/libflux list --all
+# Test container listing (while a container is running)
+./target/debug/libflux ps
 
 # Test benchmarking
 sudo ./target/debug/libflux benchmark \
   --count 5 \
-  --image /tmp/test-rootfs \
-  --verbose
+  --image /tmp/test-rootfs
 ```
 
 ## 🔒 Security Considerations
@@ -333,18 +300,10 @@ sudo ./target/debug/libflux benchmark \
 
 ### Version 0.2.0 (Next Release)
 
-- [ ] Exec functionality for running commands in containers
 - [ ] Advanced networking (custom bridges, port forwarding)
 - [ ] Image extraction from OCI archives
 - [ ] Seccomp support
 - [ ] Enhanced benchmarking metrics
-
-### Version 0.3.0
-
-- [ ] Multi-container orchestration
-- [ ] Volume management
-- [ ] Health checks
-- [ ] Container restart policies
 
 ### Version 1.0.0
 
@@ -359,11 +318,9 @@ sudo ./target/debug/libflux benchmark \
 
 Container creation and startup times (on modern hardware):
 
-- **Container Creation**: ~50ms
-- **Namespace Setup**: ~10ms
-- **Filesystem Preparation**: ~20ms
-- **Network Setup**: ~15ms
-- **Total Startup**: ~100ms
+- **Container Creation**: ~307µs
+- **Container Start**: ~50ms
+- **Total Container Creation & Start**: ~50ms
 
 *Note: Performance may vary based on system configuration and container complexity.*
 
