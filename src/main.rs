@@ -1,23 +1,12 @@
-mod cgroups;
-mod config;
-mod container;
-mod error;
-mod fs;
-mod logging;
-mod namespace;
-mod net;
-mod user;
-mod utils;
-
-use crate::cgroups::ResourceLimits;
-use crate::config::ContainerConfig;
-use crate::container::{Container, ContainerState};
-use crate::error::*;
-use crate::fs::MountType;
-use crate::logging::LibfluxLogger;
-use crate::namespace::NamespaceType;
-use crate::net::{DnsConfig, NetworkConfig, NetworkInterface, NetworkMode};
-use crate::utils::{format_size, get_system_info, parse_size};
+use libflux::cgroups::ResourceLimits;
+use libflux::config::ContainerConfig;
+use libflux::container::{Container, ContainerState};
+use libflux::error::*;
+use libflux::fs::MountType;
+use libflux::logging::LibfluxLogger;
+use libflux::namespace::NamespaceType;
+use libflux::net::{DnsConfig, NetworkConfig, NetworkInterface, NetworkMode};
+use libflux::utils::{format_size, get_system_info, parse_size};
 use clap::{Args, Parser, Subcommand};
 use log::{debug, error, info, warn};
 use std::collections::{HashMap, HashSet};
@@ -204,7 +193,7 @@ async fn main() {
     let cli = Cli::parse();
 
     // Initialize logging
-    let log_level = crate::logging::parse_log_level(&cli.log_level);
+    let log_level = libflux::logging::parse_log_level(&cli.log_level);
     if let Err(e) = LibfluxLogger::init(log_level, cli.log_dir) {
         eprintln!("Failed to initialize logger: {}", e);
         std::process::exit(1);
@@ -1054,7 +1043,7 @@ async fn get_running_containers() -> LibfluxResult<Vec<RunningContainerInfo>> {
 
                                 // Try to create a cgroup manager and get stats
                                 if let Ok(mut cgroup_manager) =
-                                    crate::cgroups::CgroupManager::new(container_id.to_string())
+                                    libflux::cgroups::CgroupManager::new(container_id.to_string())
                                 {
                                     // Set as created since it exists
                                     let _ = cgroup_manager.create(); // This should succeed since it exists
@@ -1137,7 +1126,7 @@ struct SimpleContainerStats {
 
 /// Get basic container statistics
 async fn get_container_stats(
-    container_info: &crate::container::ContainerInfo,
+    container_info: &libflux::container::ContainerInfo,
 ) -> SimpleContainerStats {
     if container_info.state != ContainerState::Running || container_info.pid.is_none() {
         return SimpleContainerStats {
@@ -1260,7 +1249,7 @@ async fn handle_info() -> LibfluxResult<()> {
     );
 
     // Check networking capabilities
-    if let Ok(net_caps) = crate::net::check_network_capabilities() {
+    if let Ok(net_caps) = libflux::net::check_network_capabilities() {
         println!();
         println!("Network Capabilities:");
         println!(
@@ -1286,7 +1275,7 @@ async fn handle_info() -> LibfluxResult<()> {
     }
 
     // Check user namespace capabilities
-    if let Ok(subid_info) = crate::user::get_subid_info() {
+    if let Ok(subid_info) = libflux::user::get_subid_info() {
         println!();
         println!("User Namespace Capabilities:");
         println!(
