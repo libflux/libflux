@@ -129,3 +129,80 @@ impl Default for TerminalConfig {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::namespace::NamespaceType;
+
+    fn sample_config() -> ContainerConfig {
+        let mut env = HashMap::new();
+        env.insert("FOO".to_string(), "bar".to_string());
+        ContainerConfig::new(
+            "web".to_string(),
+            "alpine:latest".to_string(),
+            vec!["/bin/sh".to_string(), "-c".to_string(), "echo hi".to_string()],
+            Some(PathBuf::from("/srv")),
+            env,
+            PathBuf::from("/tmp/rootfs"),
+            vec![NamespaceType::Pid, NamespaceType::Mount],
+            true,
+            Some("web-host".to_string()),
+            Vec::new(),
+            ResourceLimits::default(),
+            None,
+            NetworkConfig::default(),
+        )
+    }
+
+    #[test]
+    fn new_maps_arguments_to_fields() {
+        let config = sample_config();
+
+        assert_eq!(config.metadata.name, "web");
+        assert_eq!(config.metadata.image, "alpine:latest");
+        assert!(config.metadata.labels.is_empty());
+        assert!(config.metadata.annotations.is_empty());
+
+        assert_eq!(config.runtime.command, vec!["/bin/sh", "-c", "echo hi"]);
+        assert_eq!(config.runtime.working_dir, Some(PathBuf::from("/srv")));
+        assert_eq!(config.runtime.rootfs, PathBuf::from("/tmp/rootfs"));
+        assert_eq!(config.runtime.namespaces.len(), 2);
+        assert!(config.runtime.privileged);
+        assert_eq!(config.runtime.hostname.as_deref(), Some("web-host"));
+        assert!(config.runtime.user.is_none());
+        assert!(!config.runtime.readonly);
+
+        assert_eq!(config.environment.get("FOO").map(String::as_str), Some("bar"));
+        assert!(config.user_mapping.is_none());
+        assert!(config.mounts.is_empty());
+    }
+
+    #[test]
+    fn new_defaults_terminal_to_all_enabled() {
+        let config = sample_config();
+        let term = &config.runtime.terminal;
+        assert!(term.tty && term.stdin && term.stdout && term.stderr);
+    }
+
+    #[test]
+    fn terminal_config_default_enables_all_streams() {
+        let term = TerminalConfig::default();
+        assert!(term.tty);
+        assert!(term.stdin);
+        assert!(term.stdout);
+        assert!(term.stderr);
+    }
+
+    #[test]
+    fn config_survives_json_round_trip() {
+        let config = sample_config();
+        let json = serde_json::to_string(&config).expect("serialize");
+        let restored: ContainerConfig = serde_json::from_str(&json).expect("deserialize");
+
+        assert_eq!(restored.metadata.name, config.metadata.name);
+        assert_eq!(restored.runtime.command, config.runtime.command);
+        assert_eq!(restored.runtime.namespaces, config.runtime.namespaces);
+        assert_eq!(restored.environment, config.environment);
+    }
+}

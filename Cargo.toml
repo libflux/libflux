@@ -9,6 +9,10 @@ repository = "https://github.com/libflux/libflux"
 keywords = ["containers", "namespaces", "linux", "runtime", "cgroups"]
 categories = ["os::linux-apis", "command-line-utilities"]
 
+[lib]
+name = "libflux"
+path = "src/lib.rs"
+
 [[bin]]
 name = "libflux"
 path = "src/main.rs"
