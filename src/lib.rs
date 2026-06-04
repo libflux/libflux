@@ -18,7 +18,7 @@
 //! # async fn run() -> libflux::LibfluxResult<()> {
 //! let config = ContainerConfig::new(
 //!     "example".to_string(),
-//!     "/path/to/rootfs".to_string(),
+//!     "alpine:latest".to_string(),
 //!     vec!["/bin/sh".to_string()],
 //!     None,
 //!     HashMap::new(),
